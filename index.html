@@ -359,11 +359,32 @@ function toast(msg, ms){
   $('#toasts').appendChild(el);
   setTimeout(() => el.remove(), ms || 2600);
 }
-function download(name, text){
+async function download(name, text){
+  const blob = new Blob([text], { type: 'application/json' });
+  // 优先：系统"另存为"对话框直接写盘（Edge/Chrome支持），文件100%落到所选位置，
+  // 彻底绕开Edge下载暂存目录（Temp\MicrosoftEdgeDownloads）丢文件的问题
+  if (window.showSaveFilePicker){
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: name,
+        types: [{ description: '留言记录文件', accept: { 'application/json': ['.json'] } }],
+      });
+      const w = await handle.createWritable();
+      await w.write(blob); await w.close();
+      return true;
+    } catch(e){
+      if (e && e.name === 'AbortError') return false; // 用户点了取消，不再走兜底
+      // 其他异常（如策略限制）→ 继续走传统下载
+    }
+  }
+  // 兜底：Blob URL 下载。Edge"另存为"流程会在用户确认保存时才从URL读数据，
+  // revoke必须留足时间（10分钟）——之前4秒就撤销，导致确认时数据源失效、保存失败
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
-  a.download = name; a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 600000);
+  return true;
 }
 
 /* ---------- 视频指纹（改文件名也能匹配） ---------- */
@@ -693,7 +714,7 @@ window.addEventListener('keydown', e => {
 });
 
 /* ---------- 导出留言记录 ---------- */
-$('#btnExportRec').addEventListener('click', () => {
+$('#btnExportRec').addEventListener('click', async () => {
   if (!cur) { toast('请先导入视频'); return; }
   const list = Object.values(comments).sort((a, b) => a.t - b.t);
   const data = {
@@ -704,8 +725,9 @@ $('#btnExportRec').addEventListener('click', () => {
     comments: list,
   };
   const base = cur.name.replace(/\.[^.]+$/, '');
-  download(`留言记录_${base}_${getAuthor() || '匿名'}_${stamp()}.json`, JSON.stringify(data, null, 2));
-  toast(`已导出 ${list.length} 条留言，发给负责人即可`);
+  const ok = await download(`留言记录_${base}_${getAuthor() || '匿名'}_${stamp()}.json`, JSON.stringify(data, null, 2));
+  if (ok) toast(`已导出 ${list.length} 条留言 ✓ 保存位置见另存为对话框`);
+  else toast('已取消保存');
 });
 
 /* ---------- 导入留言记录（多份合并、按ID去重） ---------- */
