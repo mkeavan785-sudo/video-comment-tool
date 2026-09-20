@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>视频留言工具-Evan</title>
+<style>
+  /* ========== 基础变量与全局 ========== */
+  :root{
+    --bg:#101114; --panel:#1a1d23; --panel2:#242830; --line:#2c313a;
+    --txt:#e8eaed; --dim:#98a1ab; --acc:#ff4d4f; --blue:#4c8dff;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--txt);
+    font-family:"Microsoft YaHei",system-ui,-apple-system,"PingFang SC",sans-serif;
+    height:100dvh; display:flex; flex-direction:column; overflow:hidden;
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  .hidden{display:none !important}
+  button{font-family:inherit}
+
+  /* ========== 顶部栏 ========== */
+  #topbar{
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    padding:10px 14px; border-bottom:1px solid var(--line); background:var(--panel);
+  }
+  #topbar h1{font-size:16px; margin:0; font-weight:600; white-space:nowrap}
+  .logo{color:var(--acc); font-size:18px}
+  .chip{
+    background:var(--panel2); border:1px solid var(--line); color:var(--dim);
+    font-size:12px; padding:4px 10px; border-radius:999px; max-width:260px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .tb-right{margin-left:auto; display:flex; gap:8px; flex-wrap:wrap}
+
+  /* ========== 按钮 ========== */
+  .btn{
+    background:var(--panel2); border:1px solid var(--line); color:var(--txt);
+    border-radius:8px; padding:8px 14px; font-size:14px; cursor:pointer;
+    transition:background .15s, transform .1s; user-select:none;
+  }
+  .btn:hover{background:#2e333d}
+  .btn:active{transform:scale(.96)}
+  .btn.primary{background:var(--blue); border-color:var(--blue); color:#fff}
+  .btn.primary:hover{background:#3d7df0}
+  .btn.big{padding:14px 30px; font-size:17px; border-radius:12px}
+  .btn.small{padding:6px 12px; font-size:13px}
+  .btn.tiny{padding:2px 8px; font-size:12px}
+  /* 触屏设备：触摸目标最小44px */
+  @media (pointer:coarse){
+    .btn{min-height:44px; min-width:44px}
+  }
+
+  /* ========== 落地页（未导入视频） ========== */
+  .landing{flex:1; min-height:0; display:flex; align-items:center; justify-content:center; padding:20px; overflow:auto}
+  .land-card{
+    max-width:580px; width:100%; background:var(--panel); border:1px solid var(--line);
+    border-radius:16px; padding:30px 28px; text-align:center;
+  }
+  .land-icon{font-size:52px; margin-bottom:6px}
+  .land-card h2{margin:0 0 10px; font-size:21px}
+  .land-desc{color:var(--dim); font-size:14px; line-height:1.7; margin:0 0 18px}
+  .tips{margin-top:16px; text-align:left; color:var(--dim); font-size:13px; line-height:1.8}
+  .tips summary{cursor:pointer; color:var(--txt); font-size:14px}
+  .tips ol{margin:8px 0 0; padding-left:20px}
+  .sign-line{margin:16px 0 0; font-size:13px; color:var(--dim)}
+  .sign-line b{color:var(--txt)}
+
+  /* ========== 播放器 ========== */
+  .player{flex:1; min-height:0; display:flex; flex-direction:column}
+  .stage{flex:1; min-height:0; display:flex; align-items:center; justify-content:center; padding:14px}
+  .vwrap{
+    position:relative; background:#000; border-radius:8px; overflow:hidden;
+    box-shadow:0 4px 24px rgba(0,0,0,.45);
+  }
+  #video{width:100%; height:100%; display:block; background:#000}
+  .overlay{position:absolute; inset:0; pointer-events:none; z-index:10}
+
+  /* 红点 */
+  .dot{
+    position:absolute; width:18px; height:18px; border-radius:50%;
+    background:var(--acc); border:2px solid #fff; box-shadow:0 1px 6px rgba(0,0,0,.6);
+    transform:translate(-50%,-50%); cursor:pointer; pointer-events:auto;
+    padding:0; opacity:.88; transition:transform .12s, opacity .12s;
+  }
+  .dot:hover{transform:translate(-50%,-50%) scale(1.3); opacity:1}
+  .dot.pending{animation:pulse 1s infinite}
+  @keyframes pulse{
+    0%,100%{box-shadow:0 0 0 0 rgba(255,77,79,.55)}
+    50%{box-shadow:0 0 0 9px rgba(255,77,79,0)}
+  }
+
+  /* 留言气泡（自动弹出/查看） */
+  .bubble{
+    position:absolute; pointer-events:auto; z-index:20; max-width:270px; min-width:150px;
+    background:#fff; color:#1a1a1a; border-radius:10px; padding:8px 10px;
+    font-size:14px; line-height:1.55; box-shadow:0 6px 20px rgba(0,0,0,.4);
+  }
+  .bubble .b-head{display:flex; align-items:center; gap:8px; margin-bottom:3px; font-size:12px; color:#666}
+  .bubble .b-head b{color:#111; font-size:13px}
+  .bubble .b-head .bt{margin-left:auto; font-variant-numeric:tabular-nums}
+  .bubble .b-x{background:none; border:none; cursor:pointer; color:#999; font-size:14px; padding:0 2px; line-height:1}
+  .bubble .b-x:hover{color:#333}
+  .bubble .b-del{background:none; border:none; cursor:pointer; color:#c00; font-size:12px; padding:0; margin-top:4px}
+  .bubble p{margin:0; white-space:pre-wrap; word-break:break-word}
+
+  /* 留言输入框 */
+  .cbox{
+    position:absolute; z-index:30; width:270px; background:var(--panel);
+    border:1px solid #3a4150; border-radius:12px; padding:10px;
+    box-shadow:0 10px 30px rgba(0,0,0,.55);
+  }
+  .cbox-head{display:flex; align-items:center; margin-bottom:8px}
+  .cbox-time{font-size:13px; color:var(--acc); font-weight:600; font-variant-numeric:tabular-nums}
+  .cbox-head .x{
+    margin-left:auto; background:none; border:none; color:var(--dim); cursor:pointer;
+    font-size:16px; line-height:1; padding:2px 4px; border-radius:6px;
+  }
+  .cbox-head .x:hover{color:#fff; background:var(--panel2)}
+  .cbox textarea{
+    width:100%; font-size:16px; line-height:1.5; color:var(--txt); background:#12151a;
+    border:1px solid var(--line); border-radius:8px; padding:8px 10px; resize:vertical;
+    min-height:64px; max-height:180px;
+  }
+  .cbox textarea:focus{outline:none; border-color:var(--blue)}
+  .cbox-foot{display:flex; align-items:center; margin-top:8px}
+  .cbox-tip{font-size:12px; color:var(--dim)}
+
+  /* ========== 控制区 ========== */
+  .controls{background:var(--panel); border-top:1px solid var(--line); padding:8px 14px calc(10px + env(safe-area-inset-bottom))}
+  /* 进度条（外置可拖动） */
+  .track{
+    position:relative; height:24px; cursor:pointer; touch-action:none; overflow:visible;
+  }
+  .track::before{
+    content:""; position:absolute; left:0; right:0; top:50%; height:5px;
+    transform:translateY(-50%); background:#3a4048; border-radius:3px;
+  }
+  .played{
+    position:absolute; left:0; top:50%; height:5px; transform:translateY(-50%);
+    background:var(--blue); border-radius:3px; width:0; pointer-events:none;
+  }
+  .playhead{
+    position:absolute; top:50%; width:13px; height:13px; border-radius:50%;
+    background:#fff; border:2px solid var(--blue); transform:translate(-50%,-50%);
+    pointer-events:none; box-shadow:0 1px 4px rgba(0,0,0,.5);
+  }
+  .marker{
+    position:absolute; top:50%; width:9px; height:9px; border-radius:50%;
+    background:var(--acc); border:1px solid #fff; transform:translate(-50%,-50%);
+    cursor:pointer; padding:0; z-index:2;
+  }
+  .marker:hover{transform:translate(-50%,-50%) scale(1.4)}
+  .btnrow{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:6px}
+  .btn.ctl{min-width:48px; padding:9px 12px; font-weight:600}
+  .time{color:var(--dim); font-size:14px; font-variant-numeric:tabular-nums; margin:0 4px; white-space:nowrap}
+  .spacer{flex:1}
+  #vol{width:90px; accent-color:var(--blue); cursor:pointer}
+  .hint{color:#6b7480; font-size:12px; margin:7px 0 0; line-height:1.6}
+
+  /* ========== 弹窗 / 提示 ========== */
+  .modal{position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; z-index:100; padding:20px}
+  .mcard{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:22px; width:320px; max-width:100%}
+  .mcard h3{margin:0 0 6px; font-size:17px}
+  .mdesc{color:var(--dim); font-size:13px; margin:0 0 14px; line-height:1.6}
+  .mcard input{
+    width:100%; font-size:16px; color:var(--txt); background:#12151a;
+    border:1px solid var(--line); border-radius:8px; padding:10px 12px;
+  }
+  .mcard input:focus{outline:none; border-color:var(--blue)}
+  .mfoot{display:flex; justify-content:flex-end; gap:8px; margin-top:16px}
+  .toasts{position:fixed; bottom:24px; left:50%; transform:translateX(-50%); z-index:200; display:flex; flex-direction:column; gap:8px; align-items:center; pointer-events:none}
+  .toast{
+    background:rgba(0,0,0,.82); color:#fff; font-size:14px; padding:9px 18px;
+    border-radius:999px; animation:tin .2s ease; max-width:86vw; text-align:center;
+  }
+  @keyframes tin{from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none}}
+
+  /* 手机端适配 */
+  @media (max-width:700px){
+    #topbar h1{font-size:15px}
+    .chip{max-width:130px}
+    .stage{padding:8px}
+    .cbox{width:min(250px, calc(100vw - 40px))}
+    .bubble{max-width:min(240px, calc(100vw - 40px))}
+    .time{font-size:13px}
+    #vol{width:70px}
+  }
+</style>
+</head>
+<body>
+
+<!-- 顶部栏 -->
+<header id="topbar">
+  <span class="logo">▶</span>
+  <h1>视频留言工具-Evan</h1>
+  <span id="videoChip" class="chip hidden"></span>
+  <div class="tb-right">
+    <button id="btnSwitchVideo" class="btn small hidden">换视频</button>
+    <button id="btnImportRec" class="btn small">导入留言记录</button>
+    <button id="btnExportRec" class="btn small primary hidden">导出留言记录</button>
+  </div>
+</header>
+
+<main style="display:flex; flex-direction:column; flex:1; min-height:0">
+
+  <!-- 落地页：未导入视频时的初始状态 -->
+  <section id="landing" class="landing">
+    <div class="land-card">
+      <div class="land-icon">🎬</div>
+      <h2>导入视频，开始留言</h2>
+      <p class="land-desc">
+        点击下方按钮选择本地视频（支持 MP4 / WebM / MOV 等浏览器可播放格式）。<br>
+        视频全程本地播放，不会被上传到任何服务器。
+      </p>
+      <button id="btnPickVideo" class="btn primary big">📂 导入视频</button>
+      <details class="tips">
+        <summary>使用说明（发给同事前请先看）</summary>
+        <ol>
+          <li>把本网页和视频文件放进同一个压缩包发给同事；<b>请提醒对方先解压到文件夹，再双击打开网页</b>，不要在压缩包里直接打开。</li>
+          <li>对方打开网页 → 点「导入视频」选中视频 → 暂停后点击画面里有问题的位置，即可亮红点留言。</li>
+          <li>留言自动保存在对方浏览器中；对方点右上角「导出留言记录」，把生成的记录文件发回给你。</li>
+          <li>你点「导入留言记录」可一次选择多份记录文件，自动合并去重、互不冲突。</li>
+          <li>请固定用同一个浏览器打开本网页（留言按浏览器保存，导出文件是最可靠的传递与备份方式）。</li>
+        </ol>
+      </details>
+      <p class="sign-line">留言署名：<b id="signName">未设置</b> <button id="btnEditName" class="btn tiny">修改</button></p>
+    </div>
+  </section>
+
+  <!-- 播放器 -->
+  <section id="player" class="player hidden">
+    <div id="stage" class="stage">
+      <div id="vwrap" class="vwrap">
+        <video id="video" playsinline></video>
+        <div id="overlay" class="overlay"></div>
+
+        <!-- 留言输入框（点画面后弹出） -->
+        <div id="pendingBox" class="cbox hidden">
+          <div class="cbox-head">
+            <span id="pendingTime" class="cbox-time"></span>
+            <button id="pendingClose" class="x" title="取消留言（红点一并消除）">✕</button>
+          </div>
+          <textarea id="pendingText" rows="3" placeholder="这里有什么问题？写下具体内容…&#10;（确认后红点固定，并出现在进度条上）"></textarea>
+          <div class="cbox-foot">
+            <span class="cbox-tip">红点位置 = 点击位置</span>
+            <button id="pendingSave" class="btn primary small" style="margin-left:auto">确认留言</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 完全接管的控制区 -->
+    <div class="controls">
+      <div id="track" class="track">
+        <div id="playedBar" class="played"></div>
+        <div id="markers"></div>
+        <div id="playhead" class="playhead"></div>
+      </div>
+      <div class="btnrow">
+        <button id="btnPlay" class="btn ctl" title="播放 / 暂停（空格）">▶</button>
+        <button id="btnB1" class="btn ctl" title="后退1秒">−1s</button>
+        <button id="btnF1" class="btn ctl" title="前进1秒">+1s</button>
+        <button id="btnB5" class="btn ctl" title="后退5秒">−5s</button>
+        <button id="btnF5" class="btn ctl" title="前进5秒">+5s</button>
+        <span id="timeLabel" class="time">00:00 / 00:00</span>
+        <span class="spacer"></span>
+        <button id="btnSpeed" class="btn ctl" title="切换倍速">1x</button>
+        <button id="btnMute" class="btn ctl" title="静音">🔊</button>
+        <input id="vol" type="range" min="0" max="1" step="0.01" value="1" title="音量">
+      </div>
+      <p class="hint">空格＝播放/暂停 ｜ ← → ＝后退/前进1秒 ｜ Shift+← → ＝±5秒 ｜ 暂停时点击画面＝在该处留言 ｜ 点击进度条红点＝跳转问题位置</p>
+    </div>
+  </section>
+</main>
+
+<!-- 隐藏的文件选择器 -->
+<input type="file" id="fileVideo" accept="video/*,.mp4,.webm,.mov,.m4v,.mkv" hidden>
+<input type="file" id="fileRec" accept=".json,application/json" multiple hidden>
+
+<!-- 署名弹窗 -->
+<div id="modal" class="modal hidden">
+  <div class="mcard">
+    <h3>留言署名</h3>
+    <p class="mdesc">你的名字会显示在留言上，方便同事知道是谁提的意见。</p>
+    <input id="nameInput" maxlength="20" placeholder="例如：张三">
+    <div class="mfoot">
+      <button id="mCancel" class="btn">取消</button>
+      <button id="mOk" class="btn primary">保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="toasts" class="toasts"></div>
+
+<script>
+/* =====================================================
+ * 视频留言工具 —— 单文件版，双击即用，无需服务器
+ * 核心机制：
+ *  1. 视频指纹：对文件头尾各2MB+文件大小做SHA-256，
+ *     保证同一视频改文件名/换电脑后留言仍能匹配
+ *  2. 留言按指纹存入 localStorage，自动持久化
+ *  3. 记录文件(JSON)按留言ID合并去重，多份导入不冲突
+ * ===================================================== */
+'use strict';
+
+const $ = s => document.querySelector(s);
+const APP_ID = 'videoCommentTool';
+
+/* ---------- 本地存储 ---------- */
+const LS = {
+  author : 'vct_v1_author',
+  device : 'vct_v1_device',
+  records: 'vct_v1_records',
+  volume : 'vct_v1_volume',
+};
+const loadStore = () => { try { return JSON.parse(localStorage.getItem(LS.records)) || {}; } catch(e){ return {}; } };
+const saveStore = st => localStorage.setItem(LS.records, JSON.stringify(st));
+let store = loadStore();
+
+const getDeviceId = () => {
+  let d = localStorage.getItem(LS.device);
+  if (!d) { d = 'dev_' + Math.random().toString(36).slice(2, 10); localStorage.setItem(LS.device, d); }
+  return d;
+};
+const getAuthor = () => localStorage.getItem(LS.author) || '';
+
+/* ---------- 运行状态 ---------- */
+const video = $('#video');
+let cur = null;        // { url, fp, name, size }
+let comments = {};     // 当前视频的留言 { id: c }
+let pending = null;    // 待保存留言 { x, y, t }（x/y为百分比）
+const openBubbles = new Map(); // id -> { el, mode, timer }
+
+/* ---------- 小工具 ---------- */
+function uid(){ return getDeviceId() + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7); }
+function clamp(v, a, b){ return Math.min(b, Math.max(a, v)); }
+function pad(n){ return String(n).padStart(2, '0'); }
+function fmt(t){
+  if (!isFinite(t) || t < 0) t = 0;
+  const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = Math.floor(t % 60);
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
+function fmtP(t){ // 精确到百分之一秒（留言时间戳展示）
+  const base = fmt(Math.floor(t));
+  const cs = Math.floor((t - Math.floor(t)) * 100);
+  return `${base}.${pad(cs)}`;
+}
+function stamp(){
+  const d = new Date();
+  return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
+}
+function toast(msg, ms){
+  const el = document.createElement('div');
+  el.className = 'toast'; el.textContent = msg;
+  $('#toasts').appendChild(el);
+  setTimeout(() => el.remove(), ms || 2600);
+}
+function download(name, text){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+/* ---------- 视频指纹（改文件名也能匹配） ---------- */
+async function fingerprint(file){
+  const HEAD = 2 * 1024 * 1024, TAIL = 2 * 1024 * 1024;
+  const head = new Uint8Array(await file.slice(0, HEAD).arrayBuffer());
+  const tail = file.size > HEAD + TAIL
+    ? new Uint8Array(await file.slice(file.size - TAIL).arrayBuffer())
+    : new Uint8Array(0);
+  const meta = new TextEncoder().encode('|' + file.size);
+  const all = new Uint8Array(head.length + tail.length + meta.length);
+  all.set(head, 0); all.set(tail, head.length); all.set(meta, head.length + tail.length);
+  try {
+    const buf = await crypto.subtle.digest('SHA-256', all);
+    return 'fp_' + Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch(e) { // 兜底：无crypto.subtle时用FNV哈希
+    let h = 0x811c9dc5;
+    for (let i = 0; i < all.length; i++){ h ^= all[i]; h = Math.imul(h, 0x01000193) >>> 0; }
+    return 'fp_fnv_' + h.toString(16) + '_' + file.size;
+  }
+}
+
+/* ---------- 视频加载 ---------- */
+async function loadVideoFile(f){
+  if (cur) URL.revokeObjectURL(cur.url);
+  toast('正在校验视频指纹…');
+  const fp = await fingerprint(f);
+  cur = { url: URL.createObjectURL(f), fp, name: f.name, size: f.size };
+  video.src = cur.url;
+
+  // 确保 localStorage 里有该视频的留言容器
+  if (!store[fp]) store[fp] = { videoName: f.name, comments: {} };
+  if (!store[fp].comments) store[fp].comments = {};
+  comments = Object.assign({}, store[fp].comments);
+
+  // 切换 UI
+  $('#landing').classList.add('hidden');
+  $('#player').classList.remove('hidden');
+  $('#videoChip').textContent = '📹 ' + f.name;
+  $('#videoChip').classList.remove('hidden');
+  $('#btnExportRec').classList.remove('hidden');
+  $('#btnSwitchVideo').classList.remove('hidden');
+
+  renderAll();
+  const n = Object.keys(comments).length;
+  toast(n > 0 ? `已加载，匹配到 ${n} 条历史留言` : '已加载，该视频暂无留言，开始新记录');
+}
+$('#fileVideo').addEventListener('change', async e => {
+  const f = e.target.files[0];
+  if (f) await loadVideoFile(f);
+  e.target.value = '';
+});
+video.addEventListener('error', () => {
+  if (cur) toast('无法解码该视频，浏览器可能不支持此格式（建议 MP4 / H.264）');
+});
+
+/* ---------- 画面自适应（让点击坐标与视频画面对齐） ---------- */
+function fitStage(){
+  if (!video.videoWidth || !cur) return;
+  const stage = $('#stage');
+  const ar = video.videoWidth / video.videoHeight;
+  const w = stage.clientWidth - 4, h = stage.clientHeight - 4;
+  let tw = Math.min(w, h * ar);
+  const wrap = $('#vwrap');
+  wrap.style.width = tw + 'px';
+  wrap.style.height = (tw / ar) + 'px';
+}
+window.addEventListener('resize', () => { fitStage(); repositionBubbles(); });
+video.addEventListener('loadedmetadata', () => { fitStage(); renderMarkers(); updateTimeUI(); });
+
+/* ---------- 点画面留言 ---------- */
+$('#vwrap').addEventListener('click', e => {
+  if (!cur) return;
+  if (e.target !== video) return; // 只响应画面空白处点击，红点/气泡自己有事件
+  if (!video.paused) { video.pause(); return; } // 播放中点击＝暂停
+  const r = $('#vwrap').getBoundingClientRect();
+  openPending((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height);
+});
+function openPending(fx, fy){
+  const keepText = pending ? $('#pendingText').value : '';
+  cancelPending(true);
+  pending = { x: fx, y: fy, t: video.currentTime };
+  // 待确认红点
+  const d = document.createElement('button');
+  d.className = 'dot pending'; d.id = 'pendingDot';
+  d.style.left = (fx * 100) + '%'; d.style.top = (fy * 100) + '%';
+  $('#overlay').appendChild(d);
+  // 输入框定位在红点附近（不超出画面）
+  const box = $('#pendingBox');
+  box.classList.remove('hidden');
+  $('#pendingTime').textContent = '@ ' + fmtP(pending.t);
+  const ta = $('#pendingText'); ta.value = keepText;
+  positionEl(box, fx, fy);
+  setTimeout(() => ta.focus(), 30);
+}
+function cancelPending(silent){
+  $('#pendingBox').classList.add('hidden');
+  const d = $('#pendingDot'); if (d) d.remove();
+  pending = null;
+  if (!silent) toast('已取消留言，红点已消除');
+}
+function positionEl(el, fx, fy){
+  const w = $('#vwrap'), r = w.getBoundingClientRect();
+  const bw = el.offsetWidth, bh = el.offsetHeight;
+  let left = clamp(fx * r.width, bw / 2 + 6, r.width - bw / 2 - 6);
+  let top  = fy * r.height - bh - 16;      // 默认在红点上方
+  if (top < 8) top = clamp(fy * r.height + 18, 8, r.height - bh - 8); // 放不下则到下方
+  el.style.left = left + 'px';
+  el.style.top  = top + 'px';
+}
+$('#pendingClose').addEventListener('click', e => { e.stopPropagation(); cancelPending(); });
+$('#pendingBox').addEventListener('click', e => e.stopPropagation());
+$('#pendingSave').addEventListener('click', submitPending);
+$('#pendingText').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submitPending();
+});
+function submitPending(){
+  const text = $('#pendingText').value.trim();
+  if (!text) { toast('请输入留言内容'); $('#pendingText').focus(); return; }
+  if (!getAuthor()) { openNameModal(() => doSaveComment(text)); return; }
+  doSaveComment(text);
+}
+function doSaveComment(text){
+  const c = {
+    id: uid(), t: pending.t, x: pending.x, y: pending.y,
+    text, author: getAuthor() || '匿名',
+    createdAt: Date.now(), deviceId: getDeviceId(),
+  };
+  comments[c.id] = c;
+  store[cur.fp].comments = comments;
+  saveStore(store);
+  cancelPending(true);
+  renderAll();
+  toast('留言已保存 ✓ 红点已固定在画面与进度条上');
+}
+
+/* ---------- 画面红点 + 气泡渲染 ---------- */
+function renderAll(){
+  renderDots();      // 画面上固定红点
+  renderMarkers();   // 进度条光标
+  syncBubbles();     // 气泡：保存后暂停在原点，会立即滞留显示
+}
+function renderDots(){
+  $('#overlay').querySelectorAll('.dot:not(#pendingDot)').forEach(d => d.remove());
+  for (const c of Object.values(comments)){
+    const d = document.createElement('button');
+    d.className = 'dot';
+    d.style.left = (c.x * 100) + '%'; d.style.top = (c.y * 100) + '%';
+    d.title = `${c.author}：${c.text.slice(0, 30)}（${fmtP(c.t)}）`;
+    d._c = c; // 保存留言引用，供 syncDots 按时间区间控制显隐
+    d.addEventListener('click', e => {
+      e.stopPropagation();
+      video.currentTime = c.t;       // 一键跳转问题位置
+      syncBubbles();
+    });
+    $('#overlay').appendChild(d);
+  }
+  syncDots();
+}
+/* 红点只在对应留言时间点±1秒（约2秒区间）内显示，离开区间自动隐藏 */
+function syncDots(){
+  const ct = video.currentTime;
+  $('#overlay').querySelectorAll('.dot:not(#pendingDot)').forEach(d => {
+    d.style.display = (d._c && Math.abs(ct - d._c.t) <= 1.0) ? '' : 'none';
+  });
+}
+function openBubble(c, mode){
+  closeBubble(c.id);
+  const b = document.createElement('div');
+  b.className = 'bubble';
+  // 头部：作者 + 时间 + 叉
+  const head = document.createElement('div'); head.className = 'b-head';
+  const nm = document.createElement('b'); nm.textContent = c.author || '匿名';
+  const tm = document.createElement('span'); tm.className = 'bt'; tm.textContent = fmtP(c.t);
+  const x = document.createElement('button'); x.className = 'b-x'; x.textContent = '✕'; x.title = '关闭';
+  head.append(nm, tm, x);
+  // 正文
+  const p = document.createElement('p'); p.textContent = c.text;
+  b.append(head, p);
+  // 删除留言：任何留言都可删（删除只影响本机记录），两步确认防误删
+  const del = document.createElement('button'); del.className = 'b-del'; del.textContent = '删除此留言';
+  del.addEventListener('click', e => {
+    e.stopPropagation();
+    if (del.dataset.arm === '1'){ deleteComment(c.id); return; }
+    if (!video.paused) video.pause(); // 自动暂停，气泡转常驻，确认过程不被播放打断
+    const it = openBubbles.get(c.id);
+    if (it && it.timer){ clearTimeout(it.timer); it.timer = null; it.mode = 'sticky'; } // 取消自动关闭
+    del.dataset.arm = '1';
+    del.textContent = '再点一次确认删除';
+    setTimeout(() => { if (del.isConnected){ del.dataset.arm = ''; del.textContent = '删除此留言'; } }, 6000);
+  });
+  b.appendChild(del);
+  x.addEventListener('click', e => { e.stopPropagation(); closeBubble(c.id); });
+  b.addEventListener('click', e => e.stopPropagation());
+  b._c = c;
+  $('#overlay').appendChild(b);
+  positionEl(b, c.x, c.y);
+  const item = { el: b, mode, timer: null };
+  if (mode === 'auto') item.timer = setTimeout(() => closeBubble(c.id), 4000);
+  openBubbles.set(c.id, item);
+}
+function closeBubble(id){
+  const it = openBubbles.get(id);
+  if (!it) return;
+  if (it.timer) clearTimeout(it.timer);
+  it.el.remove();
+  openBubbles.delete(id);
+}
+function repositionBubbles(){
+  for (const it of openBubbles.values()){
+    if (it.el._c) positionEl(it.el, it.el._c.x, it.el._c.y);
+  }
+}
+/* 播放到留言节点±1秒（约2秒区间）内自动弹出；暂停停在附近时常驻滞留 */
+function syncBubbles(){
+  if (!cur) return;
+  syncDots(); // 红点随播放位置同步显隐
+  const ct = video.currentTime;
+  const near = Object.values(comments).filter(c => Math.abs(ct - c.t) <= 1.0);
+  const nearIds = new Set(near.map(c => c.id));
+  for (const c of near){
+    const b = openBubbles.get(c.id);
+    if (b){
+      if (video.paused && b.mode !== 'sticky') openBubble(c, 'sticky'); // 暂停时升级为常驻
+    } else {
+      openBubble(c, video.paused ? 'sticky' : 'auto');
+    }
+  }
+  for (const [id, b] of Array.from(openBubbles)){
+    if (!nearIds.has(id) && b.mode === 'sticky') closeBubble(id);
+  }
+}
+function deleteComment(id){
+  closeBubble(id);
+  delete comments[id];
+  if (cur && store[cur.fp]){ store[cur.fp].comments = comments; saveStore(store); }
+  renderAll();
+  toast('留言已删除 ✓');
+}
+
+/* ---------- 进度条：拖动 + 留言标记 ---------- */
+const track = $('#track');
+let dragging = false;
+function seekFromEvent(e){
+  if (!cur || !isFinite(video.duration)) return;
+  const r = track.getBoundingClientRect();
+  const p = clamp((e.clientX - r.left) / r.width, 0, 1);
+  video.currentTime = p * video.duration;
+}
+track.addEventListener('pointerdown', e => {
+  dragging = true;
+  track.setPointerCapture(e.pointerId);
+  seekFromEvent(e);
+});
+track.addEventListener('pointermove', e => { if (dragging) seekFromEvent(e); });
+track.addEventListener('pointerup',   () => { dragging = false; });
+track.addEventListener('pointercancel', () => { dragging = false; });
+
+function renderMarkers(){
+  const box = $('#markers');
+  box.innerHTML = '';
+  if (!cur || !isFinite(video.duration) || video.duration <= 0) return;
+  for (const c of Object.values(comments)){
+    const m = document.createElement('button');
+    m.className = 'marker';
+    m.style.left = (c.t / video.duration * 100) + '%';
+    m.title = `${c.author}：${c.text.slice(0, 30)}（${fmtP(c.t)}）→ 点击跳转`;
+    m.addEventListener('pointerdown', e => e.stopPropagation()); // 不触发拖动
+    m.addEventListener('click', e => {
+      e.stopPropagation();
+      video.currentTime = c.t; // 一键跳转问题位置
+      syncBubbles();
+    });
+    box.appendChild(m);
+  }
+}
+
+/* ---------- 控制区接管 ---------- */
+const SPEEDS = [1, 1.5, 2, 0.5];
+let speedIdx = 0;
+function togglePlay(){ if (!cur) return; video.paused ? video.play() : video.pause(); }
+$('#btnPlay').addEventListener('click', togglePlay);
+$('#btnB1').addEventListener('click', () => video.currentTime = Math.max(0, video.currentTime - 1));
+$('#btnF1').addEventListener('click', () => video.currentTime = Math.min(video.duration || 0, video.currentTime + 1));
+$('#btnB5').addEventListener('click', () => video.currentTime = Math.max(0, video.currentTime - 5));
+$('#btnF5').addEventListener('click', () => video.currentTime = Math.min(video.duration || 0, video.currentTime + 5));
+$('#btnSpeed').addEventListener('click', () => {
+  speedIdx = (speedIdx + 1) % SPEEDS.length;
+  video.playbackRate = SPEEDS[speedIdx];
+  $('#btnSpeed').textContent = SPEEDS[speedIdx] + 'x';
+});
+$('#btnMute').addEventListener('click', () => video.muted = !video.muted);
+$('#vol').addEventListener('input', e => {
+  video.volume = +e.target.value;
+  if (video.volume > 0) video.muted = false;
+});
+video.addEventListener('volumechange', () => {
+  $('#btnMute').textContent = (video.muted || video.volume === 0) ? '🔇' : '🔊';
+  $('#vol').value = video.muted ? 0 : video.volume;
+});
+video.addEventListener('play',  () => { $('#btnPlay').textContent = '⏸'; cancelPending(true); });
+video.addEventListener('pause', () => { $('#btnPlay').textContent = '▶'; syncBubbles(); });
+video.addEventListener('ended', () => { $('#btnPlay').textContent = '▶'; });
+video.addEventListener('seeked', syncBubbles);
+video.addEventListener('timeupdate', () => {
+  updateTimeUI();
+  if (!video.paused) syncBubbles(); // 播放中经过留言节点自动弹出
+});
+function updateTimeUI(){
+  const d = isFinite(video.duration) ? video.duration : 0;
+  const p = d > 0 ? video.currentTime / d * 100 : 0;
+  $('#playedBar').style.width = p + '%';
+  $('#playhead').style.left = p + '%';
+  $('#timeLabel').textContent = `${fmt(video.currentTime)} / ${fmt(d)}`;
+}
+
+/* ---------- 键盘快捷键 ---------- */
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape'){ if (pending) cancelPending(); return; }
+  if (e.target.closest('input, textarea')) return;
+  if (!cur) return;
+  switch (e.key){
+    case ' ': e.preventDefault(); togglePlay(); break;
+    case 'ArrowLeft': e.preventDefault(); video.currentTime = Math.max(0, video.currentTime - (e.shiftKey ? 5 : 1)); break;
+    case 'ArrowRight': e.preventDefault(); video.currentTime = Math.min(video.duration || 0, video.currentTime + (e.shiftKey ? 5 : 1)); break;
+  }
+});
+
+/* ---------- 导出留言记录 ---------- */
+$('#btnExportRec').addEventListener('click', () => {
+  if (!cur) { toast('请先导入视频'); return; }
+  const list = Object.values(comments).sort((a, b) => a.t - b.t);
+  const data = {
+    app: APP_ID, version: 1,
+    videoFingerprint: cur.fp, videoName: cur.name,
+    author: getAuthor() || '匿名',
+    exportedAt: new Date().toISOString(),
+    comments: list,
+  };
+  const base = cur.name.replace(/\.[^.]+$/, '');
+  download(`留言记录_${base}_${getAuthor() || '匿名'}_${stamp()}.json`, JSON.stringify(data, null, 2));
+  toast(`已导出 ${list.length} 条留言，发给负责人即可`);
+});
+
+/* ---------- 导入留言记录（多份合并、按ID去重） ---------- */
+$('#fileRec').addEventListener('change', async e => {
+  const files = Array.from(e.target.files || []);
+  e.target.value = '';
+  if (!files.length) return;
+  let addTotal = 0, skipTotal = 0, fail = 0, otherVideo = 0;
+  for (const f of files){
+    try {
+      const obj = JSON.parse(await f.text());
+      if (obj.app !== APP_ID || !obj.videoFingerprint || !Array.isArray(obj.comments)) throw new Error('格式不符');
+      const fp = obj.videoFingerprint;
+      if (!store[fp]) store[fp] = { videoName: obj.videoName || '未知视频', comments: {} };
+      const entry = store[fp];
+      if (!entry.comments) entry.comments = {};
+      for (const raw of obj.comments){
+        if (!raw || !raw.id || entry.comments[raw.id]) { skipTotal++; continue; }
+        entry.comments[raw.id] = {
+          id: String(raw.id),
+          t: +raw.t || 0,
+          x: clamp(+raw.x || 0.5, 0, 1),
+          y: clamp(+raw.y || 0.5, 0, 1),
+          text: String(raw.text || '').slice(0, 2000),
+          author: String(raw.author || '匿名').slice(0, 20),
+          createdAt: +raw.createdAt || Date.now(),
+          deviceId: String(raw.deviceId || ''),
+        };
+        addTotal++;
+      }
+      if (cur && fp === cur.fp) { /* 当前视频的记录，立即生效 */ }
+      else otherVideo++;
+    } catch(err){ fail++; }
+  }
+  saveStore(store);
+  if (cur) { comments = Object.assign({}, store[cur.fp].comments); renderAll(); }
+  let msg = `导入完成：新增 ${addTotal} 条，跳过重复 ${skipTotal} 条`;
+  if (otherVideo) msg += `（含 ${otherVideo} 份属于其他视频的记录，已存档，导入对应视频后可见）`;
+  if (fail) msg += `，${fail} 份文件解析失败`;
+  toast(msg, 4200);
+});
+
+/* ---------- 署名 ---------- */
+let afterName = null;
+function openNameModal(cb){
+  afterName = cb || null;
+  $('#nameInput').value = getAuthor();
+  $('#modal').classList.remove('hidden');
+  setTimeout(() => $('#nameInput').focus(), 30);
+}
+function closeNameModal(){ $('#modal').classList.add('hidden'); afterName = null; }
+$('#mOk').addEventListener('click', () => {
+  const n = $('#nameInput').value.trim();
+  if (!n) { toast('请输入名字'); return; }
+  localStorage.setItem(LS.author, n);
+  renderSign();
+  closeNameModal();
+  toast('署名已保存：' + n);
+  if (afterName){ const cb = afterName; afterName = null; cb(); }
+});
+$('#mCancel').addEventListener('click', closeNameModal);
+$('#nameInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('#mOk').click(); });
+function renderSign(){ $('#signName').textContent = getAuthor() || '未设置'; }
+$('#btnEditName').addEventListener('click', () => openNameModal());
+
+/* ---------- 入口按钮 ---------- */
+$('#btnPickVideo').addEventListener('click', () => $('#fileVideo').click());
+$('#btnSwitchVideo').addEventListener('click', () => $('#fileVideo').click());
+$('#btnImportRec').addEventListener('click', () => $('#fileRec').click());
+
+/* ---------- 初始化 ---------- */
+(function init(){
+  renderSign();
+  const v = parseFloat(localStorage.getItem(LS.volume));
+  if (!isNaN(v)){ video.volume = v; $('#vol').value = v; }
+})();
+video.addEventListener('volumechange', () => localStorage.setItem(LS.volume, video.volume));
+</script>
+</body>
+</html>
